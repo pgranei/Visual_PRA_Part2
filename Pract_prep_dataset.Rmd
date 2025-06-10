@@ -1,0 +1,154 @@
+---
+title: "Pràctica Visualització"
+author: "Pau Grané Ibáñez"
+date: "2025-06-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Preparació del Dataset
+
+El dataset amb el que treballaré s'anomena Student Depression Rate, i recull diverses variables relatives a un gran nombre d'estudiants que podem patir o no de depressió. L'objectiu del projecte serà descubrir quins factors tenen més influència en la depressió entre estudiants. En total, realitzaré tres visualitzacions que atacaran el problema principal des de diferents perspectives. La primera estarà destinada a analitzar factors acadèmics i socioeconòmics. La segona es centralitzarà en la perspectiva de gènere, i la tercera en l'estil de vida i hàbits saludables. 
+
+### Visualització 1
+
+Comencem amb la preparació del dataset per a la primera visualització. El que m'interessa és fer un gràfic de barres horitzontals on es vegin quines variables estan més associades en tenir o no tenir depressió. En aquesta primera part m'interessa analitzar aspectes acadèmics i socioeconòmics dels estudiants, així que les variables que m'interessen seran Academic Pressure, Study Satisfaction, Financial Stress i la CGPA mitjana.
+
+```{r visual_1, echo=TRUE}
+# Carrega de paquets
+library(tidyverse)
+
+# Carrega del dataset original
+data <- read_csv("student_depression_dataset.csv")
+
+# Prepara les dades i etiqueta
+data <- data %>%
+  mutate(
+    Depression_Status = ifelse(Depression == 1, "With Depression", "Without Depression")
+  )
+
+# Normalització per variable
+data_norm <- data %>%
+  mutate(
+    `Academic Pressure` = (`Academic Pressure` - 0) / (5 - 0),
+    `Study Satisfaction` = (`Study Satisfaction` - 0) / (5 - 0),
+    `Financial Stress` = (`Financial Stress` - 1) / (5 - 1),
+    `CGPA` = CGPA / 10
+  )
+
+# Mitjanes per grup
+summary_data <- data_norm %>%
+  group_by(Depression_Status) %>%
+  summarise(
+    `Academic Pressure` = mean(`Academic Pressure`, na.rm = TRUE),
+    `Study Satisfaction` = mean(`Study Satisfaction`, na.rm = TRUE),
+    `Financial Stress` = mean(`Financial Stress`, na.rm = TRUE),
+    `CGPA` = mean(CGPA, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Format ample per Flourish
+summary_wide <- summary_data %>%
+  pivot_longer(cols = -Depression_Status, names_to = "Variable", values_to = "Mitjana") %>%
+  pivot_wider(names_from = Depression_Status, values_from = Mitjana)
+
+# Exportació
+write_csv(summary_wide, "visualitzacio_1_dataset_definitiu.csv")
+```
+
+### Visualització 2
+
+Visualització centrada en la perspectiva de gènere. El que farem serà un gràfic de barres apilades per gènere, en el que es mostri el percentatge d'estudiants amb depressió. Per a enriquir la visualització, afegirem el nivell d'estrès financer dels estudiants com a opció de filtratge. 
+
+```{r visual_2, echo=TRUE}
+# Carrega de paquets
+library(tidyverse)
+
+# Carrega del dataset
+data <- read_csv("student_depression_dataset.csv")
+
+# Conversió de variables i neteja
+data <- data %>%
+  mutate(
+    Gender = as.factor(Gender),
+    Financial_Stress = as.numeric(`Financial Stress`),
+    Depression = as.numeric(Depression)
+  )
+
+# Agrupació per gènere i nivell d’estrès
+summary_stress <- data %>%
+  filter(!is.na(Financial_Stress), !is.na(Depression)) %>%
+  group_by(Gender, Financial_Stress) %>%
+  summarise(
+    Total = n(),
+    With_Depression = sum(Depression, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Without_Depression = Total - With_Depression,
+    Percent_Depression = round((With_Depression / Total) * 100, 2)
+  )
+
+# Exportació a CSV per a Flourish
+write_csv(summary_stress, "visualitzacio_2_dataset.csv")
+```
+
+### Visualització 3
+
+Aquesta tercera visualització estarà centrada en l'estil de vida dels estudiants. És per això que les variables que ens interessa estudiar seran Sleep Duration, que codificarem com a valors numèrics, Work/Study Hours, Dietary Habits, que codificarem ordinalment (Healthy = 3, Moderate = 2, Unhealthy = 1), Study Satisfaction i Study Pressure. 
+
+```{r visual_3, echo=TRUE}
+# Carrega de paquets
+library(tidyverse)
+
+# Carrega del dataset original
+data <- read_csv("student_depression_dataset.csv")
+
+# Codificació
+data <- data %>%
+  mutate(
+    Depression_Status = ifelse(Depression == 1, "With Depression", "Without Depression"),
+    
+    # Codificació de Sleep Duration
+    Sleep_Score = case_when(
+      `Sleep Duration` == "Less than 5 hours" ~ 1,
+      `Sleep Duration` == "5-6 hours" ~ 2,
+      `Sleep Duration` == "7-8 hours" ~ 3,
+      `Sleep Duration` == "More than 8 hours" ~ 2,
+      TRUE ~ NA_real_
+    ),
+    
+    # Codificació de Dietary Habits
+    Dietary_Score = case_when(
+      `Dietary Habits` == "Unhealthy" ~ 1,
+      `Dietary Habits` == "Moderate" ~ 2,
+      `Dietary Habits` == "Healthy" ~ 3,
+      TRUE ~ NA_real_
+    )
+  )
+
+# Normalització de variables
+norm_data <- data %>%
+  mutate(
+    `Sleep Duration` = (Sleep_Score - 1) / 2,
+    `Work/Study Hours` = (`Work/Study Hours` - min(`Work/Study Hours`, na.rm = TRUE)) /
+                         (max(`Work/Study Hours`, na.rm = TRUE) - min(`Work/Study Hours`, na.rm = TRUE)),
+    `Dietary Habits` = (Dietary_Score - 1) / 2,
+    `Academic Pressure` = `Academic Pressure` / 5,
+    `Study Satisfaction` = `Study Satisfaction` / 5
+  ) %>%
+  group_by(Depression_Status) %>%
+  summarise(
+    across(
+      c(`Sleep Duration`, `Work/Study Hours`, `Dietary Habits`, `Academic Pressure`, `Study Satisfaction`),
+      ~mean(.x, na.rm = TRUE)
+    ),
+    .groups = "drop"
+  )
+
+# Exportació directa (format llarg: una fila per grup, una columna per variable)
+write_csv(norm_data, "visualitzacio_3_radar_dataset_final_LONG.csv")
+```
